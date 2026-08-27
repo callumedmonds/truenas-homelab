@@ -1,0 +1,7 @@
+[Unit]
+Description=Ensure NAS NFS mounts and jarvis containers are healthy
+After=network-online.target docker.service
+Wants=network-online.target
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/jarvis-heal.sh
