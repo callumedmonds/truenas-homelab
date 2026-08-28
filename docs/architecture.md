@@ -41,3 +41,48 @@
   broke silently when the LAN was renumbered onto a different subnet.
 - Plex's SQLite DB uses a custom collation (`icu_root`); the `sqlite3` CLI
   cannot open it. Python's `sqlite3` with a dummy collation registered works.
+  Also: during a library scan its WAL exceeds 200 MB and a **read-only** open
+  fails with "file is not a database" (RO cannot replay a WAL, worse over
+  NFS). Snapshot db + `-wal` + `-shm` to local disk and read the copy.
+- **`cp` is unsafe on datasets with `aclmode=restricted`.** `cp -a` (and even
+  `cp -r`) chmods each directory it creates; that fails EPERM and cp aborts
+  the whole subtree **while still exiting 0**. It silently copies nothing.
+  Always `rsync --no-perms --no-owner --no-group`. Found when a 60 GB rescue
+  "succeeded" in 0 seconds having copied 0 of 156,687 files.
+- **Never identify a disk by letter.** Letters reshuffle across reboots: the
+  old Windows drive has been `sdg`, `sdk`, and `sdi`, and the boot SSDs moved
+  `sdi`/`sdj` → `sdk`/`sdl`. Wiping "sdk" from yesterday's notes would have
+  destroyed a boot SSD. Match on serial (`smartctl -i`).
+
+## Crash investigation, 2026-08-27 (two hard crashes)
+
+Both crashes: kernel log stops mid-line, no panic/oops/MCE, ~2 min gap, then
+auto-restart. All ZFS pools came back healthy with zero data errors.
+
+Ruled OUT:
+- **PSU/power.** Dual redundant Platinum PSUs; live rails healthy (3.3V 3.31,
+  5V 4.99, 12V 11.98), `Main Power Fault: false`, no overload.
+- **Thermal shutdown.** No critical-temp event, and a thermal cutoff powers
+  off rather than hanging.
+- **Load alone.** Three unthrottled parallel migrations ran 3.5 h fine.
+
+Prime suspect: **the `ntfs3` kernel driver.** Both crashes came minutes after
+an NTFS read of the old Windows drive began (5 min, then 15 min) — including
+the second one at a throttled 20 MB/s with drives at 43-48 °C. A kernel-level
+fault is invisible to the BMC, which matches the empty SEL. TrueNAS has no
+`ntfs-3g`; **the Debian VM does** (userspace FUSE, cannot panic the host), so
+NTFS reads belong there, not on the NAS.
+
+The BMC event log was **100 % full** (512 entries; 500 voltage events from a
+single May 2025 burst), so it had recorded nothing for over a year. Cleared
+2026-08-27, history saved to `Cloud36/Fileshare/Services/JARVIS/diagnostics/`.
+**Check `ipmitool sel list` first after any future incident.**
+
+## Cooling
+
+Marginal and worth fixing independently of the crashes. BMC fan mode is
+already Full Speed, yet only 2 of 8 headers are populated, at 2100 RPM — an
+SC846 mid-wall normally runs 3+ fans at 4000-8000 RPM. `sda` idles ~49 °C
+against a 40 °C reported threshold, with a 64 °C lifetime max and 23
+over-temperature-limit events. Ideal for these drives is 35-45 °C.
+Noctua industrialPPC-3000s are the planned fix.
