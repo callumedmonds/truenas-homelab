@@ -27,6 +27,7 @@ import subprocess
 import sys
 
 COLD_SERIALS = {
+    "SERIAL0004": "cold04",
     "SERIAL0001": "cold01",
     "SERIAL0002": "cold02",
     "SERIAL0003": "cold03",

@@ -51,6 +51,48 @@ def all_drives():
     return sorted(os.path.basename(p) for p in glob.glob("/dev/sd?"))
 
 
+def io_counter(dev):
+    try:
+        with open("/proc/diskstats") as fh:
+            for line in fh:
+                f = line.split()
+                if len(f) > 8 and f[2] == dev:
+                    return int(f[3]) + int(f[7])
+    except OSError:
+        pass
+    return None
+
+
+_last_io = {}
+
+
+def busy_drives():
+    """Only drives doing real block I/O since the last cycle.
+
+    Polling a drive is not free: smartctl issues ATA commands that reset the
+    drive's idle timer WITHOUT registering in /proc/diskstats. This script
+    previously globbed all twelve drives every 30 s, which made it the single
+    biggest reason the cold tier never reached standby -- it kept resetting
+    the countdown on drives it had no reason to watch. ('-n standby' does not
+    save you: it only skips drives ALREADY asleep, so an awake drive is
+    polled, its timer resets, and it can never fall asleep. Chicken-and-egg.)
+
+    An idle drive generates no heat, so there is nothing to monitor anyway.
+    First cycle polls everything to establish a baseline.
+    """
+    out = []
+    first = not _last_io
+    for d in all_drives():
+        io = io_counter(d)
+        if io is None:
+            continue
+        prev = _last_io.get(d)
+        _last_io[d] = io
+        if first or prev is None or io != prev:
+            out.append(d)
+    return out
+
+
 def temp(dev):
     """Temperature, or None if the drive is asleep or unreadable.
 
@@ -112,7 +154,7 @@ def main():
          f"pause>={PAUSE_C}C resume<={RESUME_C}C ===")
 
     while True:
-        temps = {d: t for d in all_drives() if (t := temp(d)) is not None}
+        temps = {d: t for d in busy_drives() if (t := temp(d)) is not None}
         if not temps:
             time.sleep(INTERVAL)
             continue
