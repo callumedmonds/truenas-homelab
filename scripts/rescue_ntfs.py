@@ -98,20 +98,29 @@ def ensure_mounted():
 RSYNC_TMP = re.compile(r"^\..*\.[A-Za-z0-9]{6}$")
 
 
-def sweep_rsync_temps(root):
-    """rsync names in-flight files '.<name>.XXXXXX' and renames on completion.
-    A hard kill (this box crashed twice mid-rescue) leaves those behind, and
-    they then show up as EXTRA files that fail the count check even though
-    every real file copied fine. Remove them before verifying."""
+def sweep_rsync_temps(dst_root, src_root):
+    """Remove rsync's orphaned in-flight files ('.<name>.XXXXXX') left by a
+    hard kill -- this box crashed twice mid-rescue. They appear as EXTRA
+    files and fail the count check even though every real file copied.
+
+    CRITICAL: the name pattern alone is NOT sufficient. It matched real files
+    -- '.vs/slnx.sqlite' fits it exactly, because 'sqlite' is six characters
+    -- and an earlier pattern-only sweep deleted two genuine files. A file is
+    only a temp if it ALSO has no counterpart in the source tree.
+    """
     n = 0
-    for dp, _, fs in os.walk(root):
+    for dp, _, fs in os.walk(dst_root):
         for f in fs:
-            if RSYNC_TMP.match(f):
-                try:
-                    os.remove(os.path.join(dp, f))
-                    n += 1
-                except OSError:
-                    pass
+            if not RSYNC_TMP.match(f):
+                continue
+            rel = os.path.relpath(os.path.join(dp, f), dst_root)
+            if os.path.exists(os.path.join(src_root, rel)):
+                continue          # exists in source -> a real file, keep it
+            try:
+                os.remove(os.path.join(dp, f))
+                n += 1
+            except OSError:
+                pass
     if n:
         log(f"  swept {n} orphaned rsync temp file(s)")
     return n
@@ -165,7 +174,7 @@ def main():
         el = time.time() - t0
         log(f"  copied in {el/60:.1f} min ({sum(sm.values())/1e6/max(el,1):.0f} MB/s)")
 
-        sweep_rsync_temps(dst)
+        sweep_rsync_temps(dst, src)
         dm = tree(dst)
         if len(sm) != len(dm):
             log(f"  !! FILE COUNT MISMATCH {len(sm)} vs {len(dm)} -- review")
