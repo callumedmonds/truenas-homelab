@@ -279,6 +279,9 @@ def cmd_plan():
         log(f"{pool}: {run/1e9:.1f} GB assigned (budget {budget/1e9:.0f} GB)")
 
     os.makedirs(STATE, exist_ok=True)
+    for _m in os.listdir(STATE):
+        if _m.endswith(".done"):
+            os.remove(os.path.join(STATE, _m))
     with open(PLAN, "w") as fh:
         json.dump(plan, fh, indent=1)
     log(f"PLAN: {len(plan)} units, {sum(u['size'] for u in plan)/1e12:.2f} TB -> {PLAN}")
@@ -397,6 +400,13 @@ def cmd_run(pool, default_bw, dry):
             else f"  WARNING: {tbl}.Path not updated (rc={rc}) -- set manually to {newp}")
         ok += 1
     log(f"[{pool}] COMPLETE: {ok} migrated, {skip} skipped")
+    # Marker so cold-migrate-launch.sh knows this pool is finished and
+    # stops relaunching. cmd_plan() clears markers when a new plan is made.
+    try:
+        with open(f"{STATE}/{pool}.done", "w") as fh:
+            fh.write(f"{time.strftime('%F %T')} {ok} migrated, {skip} skipped\n")
+    except OSError:
+        pass
 
 
 if __name__ == "__main__":

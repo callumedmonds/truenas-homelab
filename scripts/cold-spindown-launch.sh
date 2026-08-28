@@ -31,7 +31,7 @@ log() {
 # Already running? Nothing to do. pgrep -f on the full path avoids matching
 # an unrelated python3, and avoids the self-match trap that plain pkill -f
 # patterns fall into.
-if pgrep -f "$DAEMON" >/dev/null 2>&1; then
+if pgrep -f "python3 .*cold_idle_spindown\.py" >/dev/null 2>&1; then
     exit 0
 fi
 
