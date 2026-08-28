@@ -52,12 +52,24 @@ def all_drives():
 
 
 def temp(dev):
-    for args in (["-A", f"/dev/{dev}"], ["-l", "scttempsts", f"/dev/{dev}"]):
+    """Temperature, or None if the drive is asleep or unreadable.
+
+    `-n standby` is essential, not cosmetic: a plain `smartctl -A` spins up a
+    sleeping drive to answer, so polling every 30 s would silently defeat the
+    cold-tier spindown (hddstandby=60) this box now relies on. With -n,
+    smartctl exits 2 without touching a standby drive. A sleeping drive is
+    also, by definition, not generating heat -- so skipping it is correct.
+    """
+    for args in (["-n", "standby", "-A", f"/dev/{dev}"],
+                 ["-n", "standby", "-l", "scttempsts", f"/dev/{dev}"]):
         try:
-            out = subprocess.run(["smartctl"] + args, capture_output=True,
-                                 text=True, timeout=30).stdout
+            r = subprocess.run(["smartctl"] + args, capture_output=True,
+                               text=True, timeout=30)
         except subprocess.SubprocessError:
             continue
+        if "STANDBY" in r.stdout.upper() or "SLEEP" in r.stdout.upper():
+            return None          # asleep: leave it that way
+        out = r.stdout
         for line in out.splitlines():
             if re.search(r"Temperature_Celsius|Airflow_Temperature", line, re.I):
                 p = line.split()
