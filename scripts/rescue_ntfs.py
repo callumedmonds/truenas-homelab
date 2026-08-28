@@ -29,6 +29,7 @@ Never writes to or wipes the source.
 """
 import hashlib
 import os
+import re
 import random
 import subprocess
 import sys
@@ -94,6 +95,28 @@ def ensure_mounted():
     return True
 
 
+RSYNC_TMP = re.compile(r"^\..*\.[A-Za-z0-9]{6}$")
+
+
+def sweep_rsync_temps(root):
+    """rsync names in-flight files '.<name>.XXXXXX' and renames on completion.
+    A hard kill (this box crashed twice mid-rescue) leaves those behind, and
+    they then show up as EXTRA files that fail the count check even though
+    every real file copied fine. Remove them before verifying."""
+    n = 0
+    for dp, _, fs in os.walk(root):
+        for f in fs:
+            if RSYNC_TMP.match(f):
+                try:
+                    os.remove(os.path.join(dp, f))
+                    n += 1
+                except OSError:
+                    pass
+    if n:
+        log(f"  swept {n} orphaned rsync temp file(s)")
+    return n
+
+
 def tree(root):
     out = {}
     for dp, _, fs in os.walk(root):
@@ -142,6 +165,7 @@ def main():
         el = time.time() - t0
         log(f"  copied in {el/60:.1f} min ({sum(sm.values())/1e6/max(el,1):.0f} MB/s)")
 
+        sweep_rsync_temps(dst)
         dm = tree(dst)
         if len(sm) != len(dm):
             log(f"  !! FILE COUNT MISMATCH {len(sm)} vs {len(dm)} -- review")
