@@ -246,6 +246,23 @@ def build_units():
     return units
 
 
+def pool_healthy(pool):
+    """True only if the pool is imported and ONLINE.
+
+    os.path.isdir() is not enough. When cold02's drive died the pool went
+    SUSPENDED, but /mnt/cold02/media survived as a directory and statvfs still
+    reported 456446 free blocks -- so the planner cheerfully assigned it two
+    titles. Migrating into a suspended pool cannot work and risks blocking on
+    stuck I/O, so health is checked here rather than trusting the mountpoint.
+    """
+    try:
+        r = subprocess.run(["zpool", "list", "-H", "-o", "health", pool],
+                           capture_output=True, text=True, timeout=30)
+    except subprocess.SubprocessError:
+        return False
+    return r.returncode == 0 and r.stdout.strip() == "ONLINE"
+
+
 def cmd_plan():
     already = set()
     for pool in ("cold01", "cold02", "cold03", "cold04"):
@@ -261,6 +278,9 @@ def cmd_plan():
     for pool in ("cold01", "cold02", "cold03", "cold04"):
         mnt = f"/mnt/{pool}/media"
         if not os.path.isdir(mnt):
+            continue
+        if not pool_healthy(pool):
+            log(f"{pool}: not ONLINE, skipping")
             continue
         st = os.statvfs(mnt)
         cap = st.f_blocks * st.f_frsize
@@ -334,6 +354,9 @@ def update_path(db, table, db_id, old, new):
 
 
 def cmd_run(pool, default_bw, dry):
+    if not pool_healthy(pool):
+        log(f"[{pool}] REFUSING to run: pool is not ONLINE")
+        return
     with open(PLAN) as fh:
         plan = json.load(fh)
     mine = [u for u in plan if u.get("_dest") == pool]
