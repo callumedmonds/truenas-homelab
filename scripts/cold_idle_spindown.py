@@ -23,6 +23,7 @@ sdk, sdi and sdh). Only cold-tier drives are ever touched -- never Cloud36,
 never the boot SSDs.
 
 Usage: cold_idle_spindown.py [--idle-minutes 30] [--interval 60] [--once]
+                             [--only cold03[,cold04...]]
 """
 import json
 import os
@@ -45,6 +46,23 @@ def arg(name, default):
 IDLE_MINUTES = arg("--idle-minutes", 30)
 INTERVAL = arg("--interval", 60)
 ONCE = "--once" in sys.argv
+
+# Comma-separated pool names, e.g. --only cold03. Empty means every pool in
+# COLD_SERIALS.
+#
+# This exists because the cold tier is not uniform in risk. On 2026-08-31
+# cold01, cold02 and cold04 all dropped off the HBA with DID_NO_CONNECT --
+# a mechanical contact fault, not drive failure (every one of them passed
+# SMART with zero reallocated sectors, and all three came back clean after a
+# reseat). Until that is properly fixed, those three stay spinning: a
+# spin-up is precisely the moment a marginal backplane connection fails, and
+# an idle drive that never parks cannot fail to un-park.
+#
+# cold02's loss on 2026-08-28 was originally blamed on this daemon. That was
+# wrong -- it was the same contact fault, and the drive was simply parked
+# when the connection was exercised. Worth stating plainly so the mistake
+# does not get re-derived from the git history later.
+ONLY = {p.strip() for p in arg("--only", "").split(",") if p.strip()}
 LOG = "/mnt/Cloud36/Fileshare/Services/JARVIS/diagnostics/spindown.log"
 
 
@@ -67,7 +85,8 @@ def cold_devices():
     except (json.JSONDecodeError, OSError):
         return {}
     return {d["name"]: COLD_SERIALS[d["serial"]]
-            for d in disks if d["serial"] in COLD_SERIALS}
+            for d in disks if d["serial"] in COLD_SERIALS
+            and (not ONLY or COLD_SERIALS[d["serial"]] in ONLY)}
 
 
 def io_counter(dev):
@@ -96,8 +115,9 @@ def power_state(dev):
 def main():
     last = {}          # dev -> (io_counter, timestamp_of_last_change)
     asleep = set()
+    watching = sorted(ONLY) if ONLY else sorted(set(COLD_SERIALS.values()))
     note(f"=== cold idle spindown started: idle>={IDLE_MINUTES}min, "
-         f"poll={INTERVAL}s, drives={sorted(set(COLD_SERIALS.values()))} ===")
+         f"poll={INTERVAL}s, watching={watching} ===")
     while True:
         for dev, pool in sorted(cold_devices().items()):
             io = io_counter(dev)
