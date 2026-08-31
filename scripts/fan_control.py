@@ -76,6 +76,7 @@ have to cover for it, and it also means the BMC is fighting us.
 Usage: fan_control.py [--interval 30] [--min 0x58] [--once] [--dry-run]
 """
 import glob
+import json
 import os
 import re
 import signal
@@ -84,6 +85,7 @@ import sys
 import time
 
 LOG = "/mnt/Cloud36/Fileshare/Services/JARVIS/diagnostics/fan-control.log"
+STATE = "/mnt/Cloud36/Fileshare/Services/JARVIS/diagnostics/fan-state.json"
 
 ZONE_REGS = {0: "0x10", 1: "0x11"}
 DUTY_MAX = 0xFF
@@ -273,6 +275,51 @@ def target_duty(temps, drives_max):
     return max(DUTY_MIN, min(DUTY_MAX, duty)), cpu
 
 
+_drive_seen = {}          # dev -> {"temp": int, "ts": float}
+
+
+def write_state(duty, cpu, temps, fans, dtemps):
+    """Publish this cycle's observations for nas_metrics.py to serve.
+
+    This daemon is the ONLY producer of drive temperatures on this box, and
+    that is a deliberate constraint rather than a convenience. The metrics
+    endpoint must never poll drives itself: an HTTP consumer polling every
+    10-30 s would turn every request into an ATA command, reset the idle
+    timers, and silently defeat the cold-tier spindown -- the exact bug
+    thermal_throttle.py originally had. This daemon already reads these
+    values on its own schedule, and only for drives doing real block I/O, so
+    routing everything through here costs nothing extra.
+
+    Parked drives keep their last reading with an age, so a consumer can show
+    them as stale rather than presenting an old number as if it were live.
+    Written via a temp file + atomic replace so a reader never catches a
+    half-written file.
+    """
+    now = time.time()
+    for dev, t in dtemps.items():
+        _drive_seen[dev] = {"temp": t, "ts": now}
+    payload = {
+        "ts": round(now, 1),
+        "duty": duty,
+        "duty_pct": round(duty * 100 / DUTY_MAX) if duty else None,
+        "cpu_max": cpu,
+        "temps": temps,
+        "fans": {n: r for n, (_, r) in fans.items() if r is not None},
+        "drives": {d: {"temp": v["temp"],
+                       "age_s": round(now - v["ts"], 1),
+                       "polled_this_cycle": d in dtemps}
+                   for d, v in sorted(_drive_seen.items())},
+    }
+    try:
+        os.makedirs(os.path.dirname(STATE), exist_ok=True)
+        tmp = STATE + ".tmp"
+        with open(tmp, "w") as fh:
+            json.dump(payload, fh)
+        os.replace(tmp, STATE)
+    except OSError:
+        pass                                  # telemetry must never break cooling
+
+
 def failsafe(*_):
     """Never leave the box holding a low duty. Registered on every exit path."""
     for z in ZONE_REGS:
@@ -337,6 +384,9 @@ def main():
                     cool_streak = 0
                 else:
                     note("FAILED to set duty %s" % hex(want))
+
+            write_state(current if current is not None else want,
+                        cpu, temps, fans, dtemps)
 
             if ONCE:
                 note("once: duty=%s cpu=%sC periph=%sC drives=%s fans=%s" %

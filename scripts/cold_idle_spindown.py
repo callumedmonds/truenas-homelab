@@ -31,6 +31,8 @@ import subprocess
 import sys
 import time
 
+STATE = "/mnt/Cloud36/Fileshare/Services/JARVIS/diagnostics/spindown-state.json"
+
 COLD_SERIALS = {
     "SERIAL0001": "cold01",
     "SERIAL0002": "cold02",
@@ -112,6 +114,36 @@ def power_state(dev):
     return "unknown"
 
 
+def write_state(devices, asleep, last, watching):
+    """Publish park state for nas_metrics.py.
+
+    This daemon already knows which drives it has parked, so the metrics
+    endpoint can report power state without issuing a single ATA command.
+    That matters: `hdparm -C` is answered by the drive electronics and will
+    not spin a drive up, but calling it on every HTTP request would still
+    risk nudging idle timers on drives that are merely awake. Publishing
+    what we already track costs nothing and cannot interfere.
+    """
+    now = time.time()
+    payload = {"ts": round(now, 1), "watching": sorted(watching), "drives": {}}
+    for dev, pool in sorted(devices.items()):
+        _, since = last.get(dev, (None, now))
+        payload["drives"][pool] = {
+            "dev": dev,
+            "state": "standby" if dev in asleep else "active",
+            "idle_min": round((now - since) / 60, 1),
+            "managed": True,
+        }
+    try:
+        os.makedirs(os.path.dirname(STATE), exist_ok=True)
+        tmp = STATE + ".tmp"
+        with open(tmp, "w") as fh:
+            json.dump(payload, fh)
+        os.replace(tmp, STATE)
+    except OSError:
+        pass                              # telemetry must never break spindown
+
+
 def main():
     last = {}          # dev -> (io_counter, timestamp_of_last_change)
     asleep = set()
@@ -119,7 +151,8 @@ def main():
     note(f"=== cold idle spindown started: idle>={IDLE_MINUTES}min, "
          f"poll={INTERVAL}s, watching={watching} ===")
     while True:
-        for dev, pool in sorted(cold_devices().items()):
+        devices = cold_devices()
+        for dev, pool in sorted(devices.items()):
             io = io_counter(dev)
             if io is None:
                 continue
@@ -147,6 +180,7 @@ def main():
             else:
                 note(f"{pool} ({dev}) spindown FAILED: "
                      f"{(r.stderr or '').strip()[:120]}")
+        write_state(devices, asleep, last, watching)
         if ONCE:
             return
         time.sleep(INTERVAL)
