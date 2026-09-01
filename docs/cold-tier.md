@@ -52,8 +52,8 @@ All three cold pools are single-disk, no redundancy, `recordsize=1M`,
 `atime=off`, lz4, NFSv4 ACLs (owner@ + group@ + `group:apps(568)` +
 `group:Callum(1000)`, all FULL_CONTROL inheritable), NFS-exported to
 192.0.2.0/24 with `maproot=root`, mounted on the VM, in the mergerfs
-union, in jarvis-heal's mount list, and added as root folders in both
-Sonarr and Radarr.
+union, and added as root folders in both Sonarr and Radarr. jarvis-heal picks
+them up from fstab on its own.
 
 | Pool | Disk | Serial | Size | Notes |
 |---|---|---|---|---|
@@ -101,7 +101,8 @@ the same census to see what's dropped off the live list.
    (recordsize 1M, atime off), `Movies/` + `Series/`, chown 1000:1000.
 3. NFS-export `/mnt/coldNN/media` to 192.0.2.0/24.
 4. VM: fstab entry → `/srv/coldNN` (nfs4, `_netdev,x-systemd.automount`),
-   add to jarvis-heal mount list, mount.
+   mount. Nothing to add to jarvis-heal — it reads the NFS entries out of
+   fstab, so a new tier is covered the moment fstab is.
 5. Add `/srv/coldNN` as a mergerfs branch; Plex needs no change at all.
 6. Sonarr/Radarr: add the tier's root folder paths.
 

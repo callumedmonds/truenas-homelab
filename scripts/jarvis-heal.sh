@@ -13,7 +13,16 @@ for i in $(seq 1 60); do
   sleep 5
 done
 
-for m in /srv/jarvis-data /srv/plex-media /srv/cold01; do
+# Which mounts to heal comes from fstab, not a list kept here. That list had
+# already drifted once: the copy running on the VM carried cold02..cold04 that
+# this file never gained, so restoring from this repo would have quietly
+# stopped healing three of them -- during a rebuild, which is exactly when
+# nobody is checking. fstab is what mount(8) consults anyway, so it cannot
+# disagree with the machine.
+mapfile -t MOUNTS < <(awk '$1 !~ /^#/ && $3 ~ /^nfs/ { print $2 }' /etc/fstab)
+[ "${#MOUNTS[@]}" -gt 0 ] || { log "no nfs entries in /etc/fstab; nothing to heal"; exit 0; }
+
+for m in "${MOUNTS[@]}"; do
   if ! mountpoint -q "$m"; then
     systemctl reset-failed "$(systemd-escape -p --suffix=mount "$m")" 2>/dev/null
     mount "$m" 2>/dev/null && log "mounted $m" || log "FAILED to mount $m"
