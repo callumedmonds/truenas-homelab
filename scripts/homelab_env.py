@@ -51,9 +51,14 @@ def get(key, default=None):
 
 
 def pairs(key):
-    """Parse "A:one,B:two" into {"A": "one", "B": "two"}, preserving order."""
+    """Parse "A:one;B:two" into {"A": "one", "B": "two"}, preserving order.
+
+    Pairs are separated by ';' rather than ',' so a label may contain a comma
+    -- "Cloud36 (IronWolf, the hot one)" is a real one. Only the first ':' in
+    an item splits it, so labels may contain colons too.
+    """
     out = {}
-    for item in get(key, "").split(","):
+    for item in get(key, "").split(";"):
         item = item.strip()
         if not item:
             continue
