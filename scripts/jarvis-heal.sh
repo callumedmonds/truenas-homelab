@@ -1,7 +1,11 @@
 #!/bin/bash
 # Ensure NAS NFS mounts are present and crashed jarvis containers are restarted.
 # Only restarts containers that exited NON-ZERO (a crash), never ones stopped deliberately.
-NAS=192.0.2.10
+# Site values live outside the repo (serials and addresses identify one
+# machine). systemd passes NAS_IP via EnvironmentFile; when run by hand, fall
+# back to /etc/homelab.env. See scripts/homelab.env.example.
+[ -r /etc/homelab.env ] && . /etc/homelab.env
+NAS="${NAS_IP:?NAS_IP not set -- see scripts/homelab.env.example}"
 log(){ logger -t jarvis-heal "$*"; }
 
 for i in $(seq 1 60); do

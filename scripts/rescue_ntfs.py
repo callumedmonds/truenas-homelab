@@ -35,9 +35,11 @@ import subprocess
 import sys
 import time
 
+import homelab_env
+
 SRC = "/mnt/WindowsDrive"
 DST = "/mnt/Cloud36/Fileshare/Recovered-from-sdg"
-SERIAL = "SERIAL0004"
+SERIAL = homelab_env.get("RESCUE_SERIAL")
 NTFS3G_DIR = "/mnt/Cloud36/Fileshare/Services/JARVIS/ntfs3g"
 
 # Keep-list confirmed by owner 2026-08-27. Explicitly NOT kept: MeshRoom

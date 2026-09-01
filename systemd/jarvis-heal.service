@@ -4,4 +4,6 @@ After=network-online.target docker.service
 Wants=network-online.target
 [Service]
 Type=oneshot
+# Optional (the leading '-'): supplies NAS_IP. See scripts/homelab.env.example.
+EnvironmentFile=-/etc/homelab.env
 ExecStart=/usr/local/bin/jarvis-heal.sh

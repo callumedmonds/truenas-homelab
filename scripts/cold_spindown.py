@@ -26,12 +26,10 @@ import json
 import subprocess
 import sys
 
-COLD_SERIALS = {
-    "SERIAL0004": "cold04",
-    "SERIAL0001": "cold01",
-    "SERIAL0002": "cold02",
-    "SERIAL0003": "cold03",
-}
+import homelab_env
+
+# serial -> pool. Real serials live in homelab.env, not here.
+COLD_SERIALS = homelab_env.pairs("COLD_SERIALS")
 MINUTES = sys.argv[sys.argv.index("--minutes") + 1] if "--minutes" in sys.argv else "60"
 APPLY = "--apply" in sys.argv
 

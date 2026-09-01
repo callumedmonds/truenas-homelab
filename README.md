@@ -32,6 +32,27 @@ exited 255 and stayed down. The heal timer remounts and restarts only
 containers that *crashed* (non-zero exit, restart policy `unless-stopped`) —
 never ones stopped deliberately.
 
+## Configuration
+
+Addresses and drive serials are **not** in this repo. They identify one
+specific machine — a drive serial is what warranty and RMA lookups key on, and
+it correlates this repo with anything else quoting the same hardware — so they
+live in a gitignored `homelab.env`:
+
+```bash
+cp scripts/homelab.env.example scripts/homelab.env
+$EDITOR scripts/homelab.env          # your serials, from: lsblk -o NAME,SERIAL,MODEL,SIZE
+```
+
+Deploy it alongside the scripts. The Python scripts read it through
+`homelab_env.py` (no path setup needed — python puts a script's own directory
+first on `sys.path`); the shell scripts source it, or take the same variables
+from the environment. Anything already exported wins over the file, so a
+systemd `EnvironmentFile` or a container env var overrides any key.
+
+Every address in the docs below is an RFC 5737 documentation address
+(`192.0.2.x`), not a real one.
+
 ## Restoring after a rebuild
 
 ```bash

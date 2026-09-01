@@ -1,0 +1,13 @@
+# Site-specific values: drive serials, addresses, hostnames. Never committed —
+# see scripts/homelab.env.example for the keys and copy it to homelab.env.
+homelab.env
+scripts/homelab.env
+.env
+
+# Python build artifacts. A committed .pyc embeds the absolute build path,
+# which leaks the on-disk layout of whichever machine produced it.
+__pycache__/
+*.py[cod]
+
+*~
+*.swp

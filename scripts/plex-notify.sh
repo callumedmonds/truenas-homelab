@@ -18,7 +18,9 @@
 #
 # Sonarr/Radarr set eventtype=Test when you press Test in the UI.
 
-PLEX_HOST="192.0.2.20:32400"
+# Set in the Sonarr/Radarr container environment, e.g. PLEX_HOST=192.0.2.20:32400.
+# Kept out of the repo because it is a real address on a real LAN.
+PLEX_HOST="${PLEX_HOST:?PLEX_HOST not set -- see scripts/homelab.env.example}"
 SECTION=1                      # "Films" -- the only section; covers both trees
 LOG=/config/plex-notify.log
 

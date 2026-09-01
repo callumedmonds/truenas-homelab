@@ -33,12 +33,10 @@ import time
 
 STATE = "/mnt/Cloud36/Fileshare/Services/JARVIS/diagnostics/spindown-state.json"
 
-COLD_SERIALS = {
-    "SERIAL0001": "cold01",
-    "SERIAL0002": "cold02",
-    "SERIAL0003": "cold03",
-    "SERIAL0004": "cold04",
-}
+import homelab_env
+
+# serial -> pool. Real serials live in homelab.env, not here.
+COLD_SERIALS = homelab_env.pairs("COLD_SERIALS")
 
 
 def arg(name, default):

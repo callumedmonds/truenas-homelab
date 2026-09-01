@@ -42,21 +42,17 @@ import subprocess
 import sys
 import time
 
-# Cloud36 RAIDZ2 members plus cold03. These live in the front bays behind the
-# mid-wall and are the ones the fan swap was meant to fix. Deliberately EXCLUDES:
-#   SERIAL0002  cold02 -- dead, DID_NO_CONNECT, reading it hangs the test
-#   SERIAL0001 cold01 -- ageing 1TB laptop drive, runs 31C, nothing to learn
-#   SERIAL0004    cold04 -- ditto, 33C
-#   SSDSERIAL1.../SSDSERIAL2... boot SSDs -- not thermally interesting
-TEST_SERIALS = {
-    "SERIAL0005": "Cloud36 (IronWolf, the hot one)",
-    "SERIAL0006": "Cloud36",
-    "SERIAL0007": "Cloud36",
-    "SERIAL0008": "Cloud36",
-    "SERIAL0009": "Cloud36",
-    "SERIAL0010": "Cloud36",
-    "SERIAL0003": "cold03",
-}
+import homelab_env
+
+# The drives to actually load: the RAIDZ2 members in the front bays behind the
+# mid-wall, plus cold03. These are the ones the fan swap was meant to fix.
+#
+# Set TEST_SERIALS in homelab.env, and deliberately leave out:
+#   * any drive that is dead or flaky -- reading one that answers
+#     DID_NO_CONNECT hangs the whole test
+#   * ageing low-power drives that idle cool anyway; they teach you nothing
+#   * boot SSDs, which are not thermally interesting
+TEST_SERIALS = homelab_env.pairs("TEST_SERIALS")
 
 
 def arg(name, default):

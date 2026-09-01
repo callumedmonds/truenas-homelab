@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Turn the old Windows drive (HGST, serial SERIAL0004) into cold04.
+"""Turn the old Windows drive (HGST, serial from RESCUE_SERIAL) into cold04.
 
 Runs ONLY after the rescue keep-list is provably complete. The wipe is gated
 on a full re-verification -- file count, every file's size, and a checksum
@@ -26,7 +26,9 @@ import subprocess
 import sys
 import time
 
-SERIAL = "SERIAL0004"
+import homelab_env
+
+SERIAL = homelab_env.get("RESCUE_SERIAL")
 POOL = "cold04"
 DST = "/mnt/Cloud36/Fileshare/Recovered-from-sdg"
 SRC = "/mnt/WindowsDrive"
@@ -191,7 +193,7 @@ def main():
     log("creating NFS export")
     try:
         midclt("sharing.nfs.create", json.dumps({
-            "path": mnt, "networks": ["192.0.2.0/24"],
+            "path": mnt, "networks": [homelab_env.get("LAN_CIDR")],
             "maproot_user": "root", "maproot_group": "root",
             "comment": "cold04 media",
         }))
