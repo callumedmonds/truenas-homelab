@@ -31,6 +31,32 @@ done
 
 mountpoint -q /srv/jarvis-data || { log "jarvis-data still absent; not touching containers"; exit 0; }
 
+# A mergerfs union stacked on those mounts is NOT healed by mounting its
+# branches. If it failed at boot because a branch was not ready yet, it stays
+# unmounted -- and anything bind-mounting it keeps serving an EMPTY directory.
+# That is not loud: Plex reported "healthy" and answered /identity with 200
+# while its whole library was invisible, because its healthcheck never looks at
+# the media. Derived from fstab for the same reason the NFS list is: a list
+# kept here drifts from the machine.
+mapfile -t UNIONS < <(awk '$1 !~ /^#/ && $3 ~ /mergerfs/ { print $2 }' /etc/fstab)
+for u in "${UNIONS[@]}"; do
+  mountpoint -q "$u" && continue
+  systemctl reset-failed "$(systemd-escape -p --suffix=mount "$u")" 2>/dev/null
+  if mount "$u" 2>/dev/null; then
+    log "mounted union $u"
+    # A bind mount is resolved when the container starts, so a container that
+    # started while $u was empty cannot see the new contents until it restarts.
+    # Restart only the containers that actually bind-mount this union.
+    for c in $(docker ps --format '{{.Names}}'); do
+      docker inspect -f '{{range .Mounts}}{{.Source}}
+{{end}}' "$c" 2>/dev/null | grep -qx "$u" || continue
+      docker restart "$c" >/dev/null 2>&1 && log "restarted $c to pick up $u"
+    done
+  else
+    log "FAILED to mount union $u"
+  fi
+done
+
 for c in $(docker ps -a --filter "name=jarvis-" --format '{{.Names}}'); do
   running=$(docker inspect -f '{{.State.Running}}' "$c" 2>/dev/null)
   code=$(docker inspect -f '{{.State.ExitCode}}' "$c" 2>/dev/null)
