@@ -10,6 +10,9 @@ and the jarvis docker stack.
 |---|---|
 | `scripts/jarvis-heal.sh` | Self-healing: remounts NAS NFS shares and restarts crashed `jarvis-*` containers. Lives at `/usr/local/bin/jarvis-heal.sh` on the VM. |
 | `systemd/jarvis-heal.service` + `.timer` | Runs the heal script 90s after boot and every 5 min. `/etc/systemd/system/` on the VM. |
+| `scripts/gpu_push.py` + `systemd/gpu-push.service` | Pushes the passed-through Tesla P4's power and temperature to Home Assistant (`sensor.tesla_p4_power`, `sensor.tesla_p4_temperature`). Runs on the VM, because the NAS host cannot see the card. `/usr/local/bin/` and `/etc/systemd/system/` on the VM. |
+| `scripts/nas_power_push.py` + `nas-power-push-launch.sh` | Pushes every new BMC power reading to Home Assistant (`sensor.nas_power`). Runs on the NAS. |
+| `scripts/launch-lib.sh` | `start_daemon`, shared by every NAS `*-launch.sh`: starts daemons as transient systemd units, because a `nohup`'d daemon started by TrueNAS cron cannot exec anything (see the file). |
 | `docs/architecture.md` | Current network + storage architecture and why it is this way. |
 | `docs/cold-tier.md` | The two-tier media storage design: criteria, mergerfs plan, runbooks. |
 
@@ -103,4 +106,14 @@ Every address in the docs below is an RFC 5737 documentation address
 scp scripts/jarvis-heal.sh root@192.0.2.20:/usr/local/bin/
 scp systemd/jarvis-heal.* root@192.0.2.20:/etc/systemd/system/
 ssh root@192.0.2.20 'chmod +x /usr/local/bin/jarvis-heal.sh && systemctl daemon-reload && systemctl enable --now jarvis-heal.timer'
+```
+
+The GPU push also needs `HA_URL` in `/etc/homelab.env` on the VM, and a Home
+Assistant long-lived token alone in `/etc/homelab-ha-token` (root, mode 600).
+systemd hands the unit a private copy, so the daemon never runs as root:
+
+```bash
+scp scripts/gpu_push.py root@192.0.2.20:/usr/local/bin/
+scp systemd/gpu-push.service root@192.0.2.20:/etc/systemd/system/
+ssh root@192.0.2.20 'chmod +x /usr/local/bin/gpu_push.py && systemctl daemon-reload && systemctl enable --now gpu-push.service'
 ```

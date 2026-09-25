@@ -1,0 +1,20 @@
+[Unit]
+Description=Push GPU power and temperature to Home Assistant
+After=network-online.target nvidia-persistenced.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Supplies HA_URL. See scripts/homelab.env.example.
+EnvironmentFile=/etc/homelab.env
+# The HA long-lived token is full admin on HA, so it lives root-only at
+# /etc/homelab-ha-token and systemd hands this service its own private copy;
+# the daemon itself runs as a throwaway unprivileged user.
+LoadCredential=ha-token:/etc/homelab-ha-token
+DynamicUser=yes
+ExecStart=/usr/bin/python3 -u /usr/local/bin/gpu_push.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
