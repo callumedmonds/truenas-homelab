@@ -9,6 +9,10 @@
 # survive both reboots and upgrades. The existing truenas-net-assert.sh entry
 # follows the same pattern.
 #
+# Started as a *transient* systemd unit via launch-lib.sh, never with nohup:
+# under cron's sudo a nohup'd daemon loses the ability to exec anything. See
+# launch-lib.sh. Transient units live in /run, so the point above still holds.
+#
 # Also re-asserts hddstandby on the cold drives: the middleware applies it via
 # hdparm at system.ready, but a reboot can reorder device letters, and the
 # setting is per-disk-identifier in the config DB rather than something the
@@ -61,7 +65,10 @@ if [ ! -f "$DAEMON" ]; then
     exit 1
 fi
 
-nohup python3 -u "$DAEMON" --idle-minutes "$IDLE_MINUTES" --interval "$INTERVAL" \
-    --only "$POOLS" >> /var/log/cold-spindown.out 2>&1 &
-log "started cold_idle_spindown.py (only=${POOLS} idle=${IDLE_MINUTES}min interval=${INTERVAL}s) pid=$!"
+[ -f "$SCRIPTS/launch-lib.sh" ] || { log "launch-lib.sh missing from $SCRIPTS -- not starting"; exit 1; }
+. "$SCRIPTS/launch-lib.sh"
+how=$(start_daemon cold-spindown /var/log/cold-spindown.out \
+    /usr/bin/python3 -u "$DAEMON" --idle-minutes "$IDLE_MINUTES" \
+    --interval "$INTERVAL" --only "$POOLS")
+log "started cold_idle_spindown.py (only=${POOLS} idle=${IDLE_MINUTES}min interval=${INTERVAL}s) $how"
 exit 0

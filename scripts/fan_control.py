@@ -137,19 +137,27 @@ def note(msg):
 
 
 def ipmi(*args):
+    # OSError as well as SubprocessError: it is NOT a subclass, and an exec
+    # failure (ENOSYS when this process inherited cron's sudo seccomp filter
+    # -- see launch-lib.sh) would otherwise escape, crash the loop, and then
+    # crash failsafe() too, stranding the fans at the last duty.
     try:
         r = subprocess.run(["ipmitool"] + list(args), capture_output=True,
                            text=True, timeout=30)
         return r.stdout if r.returncode == 0 else ""
-    except subprocess.SubprocessError:
+    except (subprocess.SubprocessError, OSError):
         return ""
 
 
 def set_duty(zone, duty):
     if DRY:
         return True
-    r = subprocess.run(["ipmitool", "raw", "0x30", "0x91", "0x5a", "0x03",
-                        ZONE_REGS[zone], hex(duty)], capture_output=True)
+    try:
+        r = subprocess.run(["ipmitool", "raw", "0x30", "0x91", "0x5a", "0x03",
+                            ZONE_REGS[zone], hex(duty)], capture_output=True,
+                           timeout=30)
+    except (subprocess.SubprocessError, OSError):
+        return False
     return r.returncode == 0
 
 
@@ -322,10 +330,17 @@ def write_state(duty, cpu, temps, fans, dtemps):
 
 def failsafe(*_):
     """Never leave the box holding a low duty. Registered on every exit path."""
+    ok = True
     for z in ZONE_REGS:
-        subprocess.run(["ipmitool", "raw", "0x30", "0x91", "0x5a", "0x03",
-                        ZONE_REGS[z], "0xff"], capture_output=True)
-    note("EXIT -- fans forced to 0xff")
+        try:
+            r = subprocess.run(["ipmitool", "raw", "0x30", "0x91", "0x5a", "0x03",
+                                ZONE_REGS[z], "0xff"], capture_output=True,
+                               timeout=30)
+            ok = ok and r.returncode == 0
+        except (subprocess.SubprocessError, OSError):
+            ok = False
+    note("EXIT -- fans forced to 0xff" if ok else
+         "EXIT -- FAILED to force fans to 0xff, duty left as last written")
     sys.exit(0)
 
 

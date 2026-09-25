@@ -16,6 +16,10 @@
 # Not a systemd unit: /etc/systemd/system is writable on TrueNAS but is lost
 # on upgrade (new boot environment). Init scripts and cron live in the config
 # database and survive both.
+#
+# Started as a *transient* systemd unit via launch-lib.sh, never with nohup:
+# under cron's sudo a nohup'd daemon loses the ability to exec anything. See
+# launch-lib.sh. Transient units live in /run, so the point above still holds.
 
 POOL=${1:-cold03}
 SCRIPTS=/mnt/Cloud36/Fileshare/Services/JARVIS/migration-scripts
@@ -56,15 +60,18 @@ if ! zpool list "$POOL" >/dev/null 2>&1; then
     exit 1
 fi
 
+[ -f "$SCRIPTS/launch-lib.sh" ] || { log "launch-lib.sh missing from $SCRIPTS -- not starting"; exit 1; }
+. "$SCRIPTS/launch-lib.sh"
+
 # Thermal guard alongside it (it exits on its own when no worker is running).
 if ! pgrep -f "python3 .*thermal_throttle\.py" >/dev/null 2>&1; then
-    nohup python3 -u "$SCRIPTS/thermal_throttle.py" \
-        --bw-start 200000 --bw-max 200000 --bw-min 20000 \
-        >> /var/log/thermal-throttle.out 2>&1 &
-    log "started thermal_throttle.py pid=$!"
+    how=$(start_daemon thermal-throttle /var/log/thermal-throttle.out \
+        /usr/bin/python3 -u "$SCRIPTS/thermal_throttle.py" \
+        --bw-start 200000 --bw-max 200000 --bw-min 20000)
+    log "started thermal_throttle.py $how"
 fi
 
-nohup python3 -u "$SCRIPTS/coldmig.py" run "$POOL" --bwlimit 200000 \
-    >> "/var/log/coldmig-$POOL.out" 2>&1 &
-log "started coldmig.py run $POOL pid=$!"
+how=$(start_daemon "coldmig-$POOL" "/var/log/coldmig-$POOL.out" \
+    /usr/bin/python3 -u "$SCRIPTS/coldmig.py" run "$POOL" --bwlimit 200000)
+log "started coldmig.py run $POOL $how"
 exit 0

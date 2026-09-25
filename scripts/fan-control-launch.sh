@@ -14,6 +14,10 @@
 # live in the config database and survive both. Same reasoning as
 # cold-spindown-launch.sh and cold-migrate-launch.sh.
 #
+# Started as a *transient* systemd unit via launch-lib.sh, never with nohup:
+# under cron's sudo a nohup'd daemon loses the ability to exec anything. See
+# launch-lib.sh. Transient units live in /run, so the point above still holds.
+#
 # Registered as: POSTINIT COMMAND -> sh '<this path>'
 # Cron: every 5 min, same command
 
@@ -47,6 +51,9 @@ if [ ! -f "$DAEMON" ]; then
     exit 1
 fi
 
-nohup python3 -u "$DAEMON" --interval 30 >> /var/log/fan-control.out 2>&1 &
-log "started fan_control.py pid=$!"
+[ -f "$SCRIPTS/launch-lib.sh" ] || { log "launch-lib.sh missing from $SCRIPTS -- not starting"; exit 1; }
+. "$SCRIPTS/launch-lib.sh"
+how=$(start_daemon fan-control /var/log/fan-control.out \
+    /usr/bin/python3 -u "$DAEMON" --interval 30)
+log "started fan_control.py $how"
 exit 0
